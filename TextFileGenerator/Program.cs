@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -10,6 +11,11 @@ namespace TextFileGenerator
 {
     class Program
     {
+        // Dumping at 800MB
+        private const ulong MaxMbDump = 838900000UL;
+
+        private static readonly ConcurrentBag<string> dataToDump = new ConcurrentBag<string>();
+
         private static readonly IReadOnlyCollection<char> availableChars = Array.AsReadOnly(new[]
         {
             'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
@@ -44,6 +50,21 @@ namespace TextFileGenerator
                     Console.WriteLine("Directory does not exist, please create it and try again.");
                 }
             }
+
+            Console.Write("Type in the amount of threads the application should run on (blank for 1): ");
+            var threadCount = 1U;
+            var tempThreadCount = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(tempThreadCount) || !uint.TryParse(tempThreadCount, out threadCount))
+            {
+                Console.WriteLine("Invalid thread count input");
+            }
+            else if (threadCount > Environment.ProcessorCount)
+            {
+                threadCount = (uint) Environment.ProcessorCount;
+                Console.WriteLine($"Too many threads specified, using {threadCount} threads");
+            }
+
+            Console.WriteLine($"Running on {threadCount} threads");
 
             var fileName = string.Empty;
             var fileSize = 0UL;
@@ -117,7 +138,14 @@ namespace TextFileGenerator
                     }
                 }
 
-                await GenerateFile(directory, fileName, fileSize * 1024 * 1024);
+                if (threadCount > 1)
+                {
+                    await GenerateFileMultiThread(directory, fileName, fileSize * 1024 * 1024, threadCount);
+                }
+                else
+                {
+                    await GenerateFileSingleThread(directory, fileName, fileSize * 1024 * 1024);
+                }
 
                 Console.Write("Would you like to quit? (exit/quit/blank)");
                 exitText = Console.ReadLine();
@@ -146,7 +174,7 @@ namespace TextFileGenerator
             return text;
         }
 
-        private static async Task GenerateFile(string path, string fileName, ulong byteSize)
+        private static async Task GenerateFileSingleThread(string path, string fileName, ulong byteSize)
         {
             try
             {
@@ -225,6 +253,101 @@ namespace TextFileGenerator
             }
             finally
             {
+                Console.Read();
+            }
+        }
+
+        private static async Task GenerateFileMultiThread(string path, string fileName, ulong byteSize,
+            uint threadCount)
+        {
+            var stopwatch = new Stopwatch();
+            var dataPerThread = byteSize / threadCount;
+            if (dataPerThread > MaxMbDump)
+            {
+                dataPerThread = MaxMbDump;
+                threadCount = (uint) (byteSize / dataPerThread);
+                Console.WriteLine($"New threadCount: {threadCount}");
+            }
+
+            var totalAfterThreads = dataPerThread * threadCount;
+            var lastThreadDataCount = dataPerThread;
+
+            if (totalAfterThreads != byteSize)
+            {
+                lastThreadDataCount = byteSize - totalAfterThreads;
+            }
+
+            stopwatch.Start();
+            for (var i = 0; i < threadCount; i++)
+            {
+                var dataCount = i == threadCount ? lastThreadDataCount : dataPerThread;
+                Task.Factory.StartNew(() =>
+                {
+                    var threadSw = new Stopwatch();
+                    var textSb = new StringBuilder();
+                    threadSw.Start();
+                    for (var j = 0UL; j < dataCount; j++)
+                    {
+                        textSb.Append('a');
+                    }
+
+                    dataToDump.Add(textSb.ToString());
+                    threadSw.Stop();
+                    Console.WriteLine($"Thread {i} finished in {threadSw.ElapsedMilliseconds}MS");
+                });
+            }
+
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+
+            var fullPath = Path.Combine(path, fileName + ".txt");
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+            }
+
+            File.Create(fullPath).Close();
+
+            await using var sw = new StreamWriter(fullPath, false, Encoding.UTF8, 83890000);
+            
+            try
+            {
+                var writeCount = 0;
+
+                while (writeCount < threadCount)
+                {
+                    if (dataToDump.IsEmpty || !dataToDump.TryTake(out var dataDump))
+                    {
+                        continue;
+                    }
+
+                    var writeSw = new Stopwatch();
+
+                    writeCount++;
+                    writeSw.Start();
+                    await sw.WriteAsync(dataDump);
+                    writeSw.Stop();
+                    Console.WriteLine($"Wrote data in {writeSw.ElapsedMilliseconds}MS");
+                    await sw.FlushAsync();
+                }
+
+                stopwatch.Stop();
+                Console.WriteLine($"Thread wrote {byteSize} bytes to {fullPath} in {stopwatch.ElapsedMilliseconds}MS");
+            }
+            catch (OutOfMemoryException oom)
+            {
+                Console.WriteLine($"Out of memory:( : {oom}");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Exception: {e}");
+            }
+            finally
+            {
+                dataToDump.Clear();
+                sw.Close();
                 Console.Read();
             }
         }
