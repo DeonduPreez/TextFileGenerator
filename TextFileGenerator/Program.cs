@@ -163,9 +163,11 @@ namespace TextFileGenerator
 
                 File.Create(fullPath).Close();
 
+                await using var sw = new StreamWriter(fullPath, false, Encoding.UTF8, 83890000);
+
                 // Dump on 1GB
                 // var actualDumpInterval = 1074000000000;
-                var actualDumpInterval = 8389000UL;
+                var actualDumpInterval = 838900000UL;
                 var currentDumpInterval = actualDumpInterval;
                 Console.WriteLine($"Dump interval: {(currentDumpInterval / 1024 / 1024):F}MB");
 
@@ -194,7 +196,7 @@ namespace TextFileGenerator
                     Console.WriteLine(
                         $"Dumping data at {(i * 100.0d / byteSize):F}%. Generated ({(i / 1024 / 1024):F} MB in {(stopWatch.ElapsedMilliseconds / 1000d):F}S). Dumping again at: {(currentDumpInterval / 1024 / 1024):F}MB");
                     fileWriteStopwatch.Start();
-                    await AppendToFile(fullPath, textSb.ToString());
+                    await sw.WriteAsync(textSb.ToString());
                     // File writing is slow, look at https://www.jeremyshanks.com/fastest-way-to-write-text-files-to-disk-in-c/
                     // File writing is slow, look at https://stackoverflow.com/questions/955911/how-to-write-super-fast-file-streaming-code-in-c
                     fileWriteStopwatch.Stop();
@@ -207,7 +209,7 @@ namespace TextFileGenerator
                 var finalText = textSb.ToString();
                 if (!string.IsNullOrWhiteSpace(finalText))
                 {
-                    await AppendToFile(fullPath, finalText);
+                    await sw.WriteAsync(textSb.ToString());
                 }
 
                 stopWatch.Stop();
