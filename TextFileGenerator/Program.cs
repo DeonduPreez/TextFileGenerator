@@ -80,7 +80,7 @@ namespace TextFileGenerator
 
                 if (fileSize == 0)
                 {
-                    Console.Write("Type in the minimum file size in GigaBytes (no decimals): ");
+                    Console.Write("Type in the file size in GigaBytes (no decimals): ");
                     var fileSizeValid = false;
                     while (!fileSizeValid)
                     {
