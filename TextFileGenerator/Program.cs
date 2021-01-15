@@ -27,8 +27,7 @@ namespace TextFileGenerator
             var directoryValid = false;
             while (!directoryValid)
             {
-                Console.Write(
-                    "Type in the directory where the file should be created (Leave blank for current directory): ");
+                Console.Write("Type in the directory where the file should be created (Leave blank for current directory): ");
                 var tempDirectoryName = RemoveInvalidChars(Console.ReadLine(), invalidPathChars);
                 if (string.IsNullOrWhiteSpace(tempDirectoryName))
                 {
@@ -50,8 +49,8 @@ namespace TextFileGenerator
             var fileSize = 0UL;
 
             var exitText = string.Empty;
-            while (!exitText.Equals("quit", StringComparison.InvariantCultureIgnoreCase) &&
-                   !exitText.Equals("exit", StringComparison.InvariantCultureIgnoreCase))
+            while (!exitText.Contains("q", StringComparison.InvariantCultureIgnoreCase) &&
+                   !exitText.Contains("e", StringComparison.InvariantCultureIgnoreCase))
             {
                 var fileNameValid = false;
                 var fileNameQuestionText = string.IsNullOrWhiteSpace(fileName)
@@ -81,7 +80,7 @@ namespace TextFileGenerator
 
                 if (fileSize == 0)
                 {
-                    Console.Write("Type in the minimum file size in MegaBytes: ");
+                    Console.Write("Type in the minimum file size in GigaBytes (no decimals): ");
                     var fileSizeValid = false;
                     while (!fileSizeValid)
                     {
@@ -98,7 +97,7 @@ namespace TextFileGenerator
                 }
                 else
                 {
-                    Console.Write($"Type in the file size in MegaBytes (Leave blank to use {fileSize}): ");
+                    Console.Write($"Type in the file size in GigaBytes (no decimals) (Leave blank to use {fileSize}): ");
                     var fileSizeValid = false;
                     while (!fileSizeValid)
                     {
@@ -131,9 +130,7 @@ namespace TextFileGenerator
 
                 File.Create(fullPath).Close();
 
-                var finalByteSize = GetBytesFromMegaBytes(fileSize);
-
-                await GenerateFile(fullPath, finalByteSize);
+                await GenerateFile(fullPath, fileSize);
 
                 GC.Collect();
 
@@ -166,19 +163,21 @@ namespace TextFileGenerator
             return text;
         }
 
-        private static async Task GenerateFile(string fullPath, ulong byteSize)
+        private static async Task GenerateFile(string fullPath, ulong gigaByteSize)
         {
             try
             {
-                var stopWatch = new Stopwatch();
-                var dumpIntervalDataCount = GetBytesFromMegaBytes(800);
-                Console.WriteLine($"Dump interval: {(GetMegaBytesFromBytes(dumpIntervalDataCount)):F}MB");
+                var finalByteSize = GetBytesFromGigaBytes(gigaByteSize);
 
+                const ulong maxDumpMb = 999UL;
+                var dumpIntervalDataCount = GetBytesFromMegaBytes(maxDumpMb);
+
+                var stopWatch = new Stopwatch();
                 stopWatch.Start();
 
-                var dumpCount = byteSize / dumpIntervalDataCount;
+                var dumpCount = finalByteSize / dumpIntervalDataCount;
                 var allDumpsDataCount = dumpCount * dumpIntervalDataCount;
-                var lastDumpDataCount = byteSize - allDumpsDataCount;
+                var lastDumpDataCount = finalByteSize - allDumpsDataCount;
 
                 var dataGenSw = new Stopwatch();
 
@@ -214,8 +213,7 @@ namespace TextFileGenerator
 
                 streamWriter.Close();
                 stopWatch.Stop();
-                Console.WriteLine(
-                    $"File written in ({(stopWatch.ElapsedMilliseconds / 1000d):F}S) to : {fullPath}");
+                Console.WriteLine($"{gigaByteSize}GB written in ({stopWatch.ElapsedMilliseconds / 1000d:F}S) to : {fullPath}");
             }
             catch (OutOfMemoryException oom)
             {
@@ -229,6 +227,7 @@ namespace TextFileGenerator
 
         private static string GenerateRandomData(ulong dataCount, Stopwatch stopwatch)
         {
+            Console.WriteLine("Data generation started");
             var random = new Random(Guid.NewGuid().GetHashCode());
             var textSb = new StringBuilder();
             stopwatch.Start();
@@ -239,7 +238,7 @@ namespace TextFileGenerator
             }
 
             stopwatch.Stop();
-            Console.WriteLine($"DataGen finished in {stopwatch.ElapsedMilliseconds / 1000d:F}S");
+            Console.WriteLine($"Data generation finished in {stopwatch.ElapsedMilliseconds / 1000d:F}S");
             return textSb.ToString();
         }
 
@@ -251,7 +250,7 @@ namespace TextFileGenerator
             // File writing is sort of slow, look at https://www.jeremyshanks.com/fastest-way-to-write-text-files-to-disk-in-c/
             // File writing is sort of slow, look at https://stackoverflow.com/questions/955911/how-to-write-super-fast-file-streaming-code-in-c
             fileWriteStopwatch.Stop();
-            Console.WriteLine($"FileWrite time: {(fileWriteStopwatch.ElapsedMilliseconds / 1000d):F}");
+            Console.WriteLine($"Wrote {GetMegaBytesFromBytes((ulong)dataDump.Length)}MB to file in {fileWriteStopwatch.ElapsedMilliseconds / 1000d:F}S");
         }
 
         private static ulong GetBytesFromMegaBytes(ulong bytes)
@@ -262,6 +261,11 @@ namespace TextFileGenerator
         private static ulong GetMegaBytesFromBytes(ulong megabytes)
         {
             return megabytes / 1024 / 1024;
+        }
+
+        private static ulong GetBytesFromGigaBytes(ulong bytes)
+        {
+            return bytes * 1024 * 1024 * 1024;
         }
     }
 }
